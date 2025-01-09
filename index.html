@@ -1,0 +1,276 @@
+
+
+<!DOCTYPE html>
+<html>
+<head>
+
+</head>
+<body>
+    <h1>WebRTC Video Call</h1>
+
+    <label for="room-id">Room ID:</label>
+    <input type="text" id="room-id" value="test-room">
+    <button id="join-button">Join Room</button>
+
+    <div id="controls">
+        <button id="toggle-video">Toggle Video</button>
+        <button id="toggle-audio">Toggle Audio</button>
+    </div>
+
+    <div id="videos">
+        <video id="localVideo" autoplay playsinline muted></video>
+    </div>
+
+    <div id="chat">
+        <div id="chat-messages"></div>
+        <input type="text" id="chat-input" placeholder="Type a message">
+        <button id="send-button">Send</button>
+    </div>
+
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <script>       
+    //  const socket = io('http://localhost:4000');
+
+     
+
+                // const socket = io('https://backends.divinezone.in/');
+
+        // https://backends.divinezone.in/
+         const socket = io('https://48fb-122-161-67-33.ngrok-free.app/'); 
+
+
+        const videosContainer = document.getElementById('videos');
+        const localVideo = document.getElementById('localVideo');
+        const roomIdInput = document.getElementById('room-id');
+        const joinButton = document.getElementById('join-button');
+        const toggleVideoBtn = document.getElementById('toggle-video');
+        const toggleAudioBtn = document.getElementById('toggle-audio');
+        const chatInput = document.getElementById('chat-input');
+        const chatMessages = document.getElementById('chat-messages');
+        const sendButton = document.getElementById('send-button');
+
+        let localStream;
+        const peerConnections = {};
+        let isVideoEnabled = true;
+        let isAudioEnabled = true;
+
+        sendButton.addEventListener('click', () => {
+            const message = chatInput.value.trim();
+            if (message) {
+                socket.emit('chat-message', message);
+                addChatMessage('You', message);
+                chatInput.value = '';
+            }
+        });
+
+        socket.on('chat-message', (data) => {
+            addChatMessage(data.user, data.message);
+        });
+
+        function addChatMessage(user, message) {
+            const messageElement = document.createElement('div');
+            messageElement.textContent = `${user}: ${message}`;
+            chatMessages.appendChild(messageElement);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        joinButton.addEventListener('click', async () => {
+            const roomId = roomIdInput.value.trim();
+            if (!roomId) {
+                alert('Please enter a valid Room ID.');
+                return;
+            }
+            const userId = generateUUID();
+            console.log(`Attempting to join room: ${roomId} with user ID: ${userId}`);
+
+            try {
+                  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    alert('Media devices API or getUserMedia is not supported in this browser.');
+    return;
+}
+if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    alert('Media devices API or getUserMedia is not supported in this browser.');
+    return;
+}
+
+async function startWebRTC(roomId, userId) {
+    try {
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        localVideo.srcObject = localStream;
+
+        // Add additional setup logic...
+    } catch (error) {
+        console.error("Error accessing media devices:", error);
+        alert("Could not access camera or microphone. Please check your permissions or device setup.");
+    }
+}
+
+
+try {
+    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    localVideo.srcObject = localStream;
+} catch (error) {
+    console.error("Error accessing media devices:", error);
+    alert("Could not access camera or microphone. Please check your permissions or device setup.");
+    return;
+}
+
+
+                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                localVideo.srcObject = localStream;
+
+                toggleVideoBtn.addEventListener('click', () => toggleTrack(localStream, 'video'));
+                toggleAudioBtn.addEventListener('click', () => toggleTrack(localStream, 'audio'));
+
+                socket.emit('join-room', roomId, userId);
+                setupSocketEvents(userId);
+            } catch (error) {
+                console.error('Error accessing media devices:', error);
+            }
+        });
+
+        function toggleTrack(stream, type) {
+            const track = stream.getTracks().find(track => track.kind === type);
+            if (track) {
+                track.enabled = !track.enabled;
+                if (type === 'video') {
+                    toggleVideoBtn.textContent = track.enabled ? 'Video On' : 'Video Off';
+                } else if (type === 'audio') {
+                    toggleAudioBtn.textContent = track.enabled ? 'Audio On' : 'Audio Off';
+                }
+            }
+        }
+
+        function setupSocketEvents(userId) {
+            socket.on('user-connected', (remoteUserId) => {
+                console.log('User connected:', remoteUserId);
+                createPeerConnection(localStream, remoteUserId);
+            });
+
+            socket.on('user-disconnected', (remoteUserId) => {
+                console.log('User disconnected:', remoteUserId);
+                removeVideoElement(remoteUserId);
+                if (peerConnections[remoteUserId]) {
+                    peerConnections[remoteUserId].close();
+                    delete peerConnections[remoteUserId];
+                }
+            });
+
+            socket.on('offer', (offer, remoteSocketId) => {
+                createPeerConnection(localStream, remoteSocketId);
+                peerConnections[remoteSocketId].setRemoteDescription(new RTCSessionDescription(offer))
+                    .then(() => peerConnections[remoteSocketId].createAnswer())
+                    .then(answer => peerConnections[remoteSocketId].setLocalDescription(answer))
+                    .then(() => socket.emit('answer', peerConnections[remoteSocketId].localDescription, remoteSocketId));
+            });
+
+            socket.on('answer', (answer, remoteSocketId) => {
+                peerConnections[remoteSocketId]?.setRemoteDescription(new RTCSessionDescription(answer));
+            });
+
+            socket.on('ice-candidate', (candidate, remoteSocketId) => {
+                if (candidate && peerConnections[remoteSocketId]) {
+                    peerConnections[remoteSocketId].addIceCandidate(new RTCIceCandidate(candidate));
+                }
+            });
+        }
+
+        // function createPeerConnection(stream, remoteSocketId) {
+        //     if (peerConnections[remoteSocketId]) {
+        //         return;
+        //     }
+
+        //     const peerConnection = new RTCPeerConnection({
+        //         iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        //     });
+
+        //     stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
+
+        //     peerConnection.onicecandidate = ({ candidate }) => {
+        //         if (candidate) {
+        //             socket.emit('ice-candidate', candidate, remoteSocketId);
+        //         }
+        //     };
+
+        //     peerConnection.ontrack = ({ streams }) => {
+        //         if (!document.getElementById(`remoteVideo-${remoteSocketId}`)) {
+        //             const remoteVideo = document.createElement('video');
+        //             remoteVideo.id = `remoteVideo-${remoteSocketId}`;
+        //             remoteVideo.autoplay = true;
+        //             remoteVideo.playsinline = true;
+        //             remoteVideo.srcObject = streams[0];
+        //             videosContainer.appendChild(remoteVideo);
+        //         }
+        //     };
+
+        //     peerConnections[remoteSocketId] = peerConnection;
+
+        //     peerConnection.onconnectionstatechange = () => {
+        //         if (peerConnection.connectionState === 'disconnected' || peerConnection.connectionState === 'failed') {
+        //             removeVideoElement(remoteSocketId);
+        //             peerConnection.close();
+        //             delete peerConnections[remoteSocketId];
+        //         }
+        //     };
+
+        //     return peerConnection;
+        // }
+
+        function createPeerConnection(stream, remoteSocketId) {
+            if (peerConnections[remoteSocketId]) {
+                return;
+            }
+
+            peerConnections[remoteSocketId] = new RTCPeerConnection({
+                iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+            });
+
+            stream.getTracks().forEach(track => peerConnections[remoteSocketId].addTrack(track, stream));
+
+            peerConnections[remoteSocketId].onicecandidate = event => {
+                if (event.candidate) {
+                    socket.emit('ice-candidate', event.candidate, remoteSocketId);
+                }
+            };
+
+            peerConnections[remoteSocketId].oniceconnectionstatechange = event => {
+                if (peerConnections[remoteSocketId].iceConnectionState === 'failed' ||
+                    peerConnections[remoteSocketId].iceConnectionState === 'disconnected') {
+                    console.log('ICE connection state changed to', peerConnections[remoteSocketId].iceConnectionState);
+                }
+            }
+
+            peerConnections[remoteSocketId].ontrack = event => {
+                const remoteVideo = document.createElement('video');
+                remoteVideo.autoplay = true;
+                remoteVideo.playsinline = true;
+                remoteVideo.id = `remoteVideo-${remoteSocketId}`;
+                videosContainer.appendChild(remoteVideo);
+                remoteVideo.srcObject = event.streams[0];
+            };
+
+            if (!peerConnections[remoteSocketId].remoteDescription) {
+                peerConnections[remoteSocketId].createOffer()
+                    .then(offer => peerConnections[remoteSocketId].setLocalDescription(offer))
+                    .then(() => {
+                        socket.emit('offer', peerConnections[remoteSocketId].localDescription, remoteSocketId);
+                    });
+            }
+        }
+
+        function removeVideoElement(remoteSocketId) {
+            const videoElement = document.getElementById(`remoteVideo-${remoteSocketId}`);
+            if (videoElement) {
+                videosContainer.removeChild(videoElement);
+            }
+        }
+
+        function generateUUID() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+                const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+    </script>
+</body>
+</html>
